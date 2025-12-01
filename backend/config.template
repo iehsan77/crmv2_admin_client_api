@@ -1,0 +1,30 @@
+# CRM Admin API Environment Configuration
+# Copy this file to .env and update with your actual values
+
+# Database Configuration
+MONGODB_URL=mongodb+srv://username:password@your-mongodb-cluster.mongodb.net/database?retryWrites=true&w=majority
+
+# API Configuration
+API_URL=http://localhost:8014
+WORKING_ENVIRONMENT=development  # development, staging, production
+
+# Security
+SECRET_KEY=your-secret-key-here
+ALGORITHM=HS256
+
+# Webhook Configuration
+GITHUB_WEBHOOK_SECRET=your-webhook-secret-here
+WEBHOOK_PORT=8080
+
+# Server Configuration
+PROJECT_DIR=/path/to/your/project
+LOG_FILE=/var/log/crmadmin-deploy.log
+BACKUP_DIR=/backups/crmadmin
+
+# Notification Configuration (Optional)
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+TELEGRAM_CHAT_ID=your-telegram-chat-id
+
+# Docker Configuration
+DOCKER_COMPOSE_FILE=docker-compose.yml
+CONTAINER_NAME=crmadmin_core_api 

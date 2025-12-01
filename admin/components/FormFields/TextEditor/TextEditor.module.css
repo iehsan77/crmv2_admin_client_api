@@ -1,0 +1,41 @@
+/* Transparent background for editor content */
+.ql-container {
+  background-color: transparent !important;
+  border: none !important;
+}
+
+/* Customize the editor text area */
+.ql-editor {
+  background-color: transparent !important;
+  color: #1f2937; /* optional: adjust text color */
+  min-height: 120px; /* adjust as needed */
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+/* Style toolbar background and buttons */
+.ql-toolbar {
+  background-color: #0e6dcc !important;
+  border-bottom: 1px solid #e5e7eb;
+  border-top-left-radius: 0.375rem;
+  border-top-right-radius: 0.375rem;
+  padding: 0.5rem;
+}
+
+/* Style toolbar buttons */
+.ql-toolbar button {
+  color: #4b5563;
+  border: none;
+  background: none;
+  transition: all 0.2s;
+}
+
+.ql-toolbar button:hover {
+  background-color: #e5e7eb;
+  border-radius: 4px;
+}
+
+.custom-quill .ql-container {
+  background-color: transparent !important;
+  /* ...other styles */
+}

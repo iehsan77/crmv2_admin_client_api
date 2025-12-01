@@ -1,0 +1,24 @@
+# gunicorn.service
+# For running Gunicorn based application with a config file - TutLinks.com
+#
+# In Service Configuration section,
+# make sure the WorkingDirectory, ExecStart and ExecReload commands are correct
+# for your installation. Also do not forget to change the User and Group accordingly.
+#
+#
+# Author: Navule Pavan Kumar Rao 
+# This file is referenced from official repo of TutLinks.com
+# https://github.com/windson/fastapi/blob/fastapi-postgresql-caddy-ubuntu-deploy/gunicorn.service
+# Subscribe to TutLinks channel on YouTube: http://bit.ly/2Uc0YNk
+#
+[Unit]
+Description=Gunicorn Web Server as Unit Service Systemd - TutLinks.com
+After=network.target
+[Service]
+User=alpha
+Group=alpha
+WorkingDirectory=/home/alpha/ecom-service-api-container1
+Environment="PATH=/home/alpha/ecom-service-api-container1/env/bin"
+ExecStart=/home/alpha/ecom-service-api-container1/env/bin/gunicorn --config /home/alpha/ecom-service-api-container1/gunicorn.py app.main:app
+[Install]
+WantedBy=multi-user.target

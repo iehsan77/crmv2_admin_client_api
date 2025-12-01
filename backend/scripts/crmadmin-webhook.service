@@ -1,0 +1,29 @@
+[Unit]
+Description=CRM Admin API Webhook Handler
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/your/project
+Environment=PYTHONPATH=/path/to/your/project
+Environment=GITHUB_WEBHOOK_SECRET=your-webhook-secret
+Environment=PROJECT_DIR=/path/to/your/project
+Environment=WEBHOOK_PORT=8080
+ExecStart=/usr/bin/python3 /path/to/your/project/scripts/webhook_handler.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/path/to/your/project /var/log
+
+[Install]
+WantedBy=multi-user.target 
