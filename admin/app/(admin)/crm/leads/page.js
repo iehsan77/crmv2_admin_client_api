@@ -81,7 +81,8 @@ export default function LeadsPage() {
   useEffect(() => {
     fetchRecords();
     setViewMode("table");
-  }, [fetchRecords, setViewMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Fetch charts data
   useEffect(() => {
@@ -114,6 +115,18 @@ export default function LeadsPage() {
   /** ---------- MEMOS ---------- **/
   const columns = useMemo(() => Columns({ page, limit }), [page, limit]);
   const hasData = records?.length > 0;
+
+  // Debug logging for troubleshooting
+  useEffect(() => {
+    console.log("🔍 Leads Page State:", {
+      recordsCount: records?.length || 0,
+      recordsLoading,
+      hasData,
+      page,
+      limit,
+      endpoint: crm_endpoints.crm.leads.get,
+    });
+  }, [records, recordsLoading, hasData, page, limit]);
 
   /** ---------- RENDER ---------- **/
   return (

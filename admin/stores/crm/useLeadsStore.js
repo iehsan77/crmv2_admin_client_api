@@ -55,12 +55,19 @@ export const useLeadsAssociationStore = createAssociationStore();
 
 // 🔹 Main Leads Store
 const { leads } = crm_endpoints?.crm || {};
+
+// Validate endpoints exist
+if (!leads?.get) {
+  console.error("❌ Missing leads.get endpoint in crm_endpoints");
+  console.error("Available crm_endpoints.crm:", crm_endpoints?.crm);
+}
+
 const useLeadsStore = createModuleStore({
   moduleName: "Lead",
   endpoints: {
     get: leads?.get,
     save: leads?.save,
-    getByStatus:leads?.getByStatus,
+    getByStatus: leads?.getByStatus,
     delete: (id) => leads?.delete(id),
     getDetails: (id) => leads?.getDetails(id),
     restore: (id) => leads?.restore(id),

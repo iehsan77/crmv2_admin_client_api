@@ -54,6 +54,14 @@ export default function createModuleStore({
     fetchRecords: async () => {
       set({ recordsLoading: true, error: null });
       try {
+        // Validate endpoint exists
+        if (!endpoints?.get) {
+          console.error(`❌ Missing 'get' endpoint for ${moduleName}`);
+          toast.error(`Configuration error: Missing API endpoint for ${moduleName}`);
+          set({ recordsLoading: false, records: [] });
+          return;
+        }
+
         const getPayload =
           filtersStore?.getState?.().getPayload || (() => ({}));
         const activeTab = viewTabsStore?.getState?.().activeTab || "";
@@ -94,24 +102,58 @@ export default function createModuleStore({
           ...evaluatedExtraPayload,
         };
 
+        console.log(`📡 Fetching ${moduleName} from:`, endpoints.get);
+        console.log(`📦 Payload:`, payload);
+
         const response = await POST(endpoints.get, payload);
 
-console.log("fetchRecords response at 99")
-console.log(response)
+        console.log(`✅ fetchRecords response for ${moduleName}:`, {
+          status: response?.status,
+          hasData: !!response?.data,
+          dataType: Array.isArray(response?.data) ? 'array' : typeof response?.data,
+          dataLength: Array.isArray(response?.data) ? response.data.length : 'N/A',
+          pagination: response?.pagination,
+          message: response?.message,
+        });
 
         if (response?.status === 200) {
+          // Ensure data is always an array
+          const recordsData = Array.isArray(response?.data) 
+            ? response.data 
+            : response?.data?.records || response?.data?.data || [];
+          
+          console.log(`✅ Setting ${recordsData.length} ${moduleName} records`);
+          
           set({
-            records: response?.data ?? [],
+            records: recordsData,
             recordsLoading: false,
-            pages: response?.pagination?.total_pages,
+            pages: response?.pagination?.total_pages || response?.pages || 0,
+            error: null,
           });
         } else {
+          // Handle error response
+          const errorMessage = response?.message || `Failed to fetch ${lowerName}s`;
+          console.error(`❌ Fetch ${moduleName} error:`, {
+            status: response?.status,
+            message: errorMessage,
+            response: response,
+          });
+          
           handleResponse(response);
-          set({ recordsLoading: false });
+          set({ 
+            records: [],
+            recordsLoading: false,
+            error: errorMessage,
+          });
         }
       } catch (err) {
+        const errorMessage = err?.message || `Failed to fetch ${lowerName}s`;
+        console.error(`❌ Fetch ${moduleName} exception:`, err);
+        
+        toast.error(errorMessage);
         set({
-          error: err?.message || `Failed to fetch ${lowerName}s`,
+          error: errorMessage,
+          records: [],
           recordsLoading: false,
         });
       }
