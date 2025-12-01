@@ -4,7 +4,7 @@ services:
         build: .
         container_name: "crm-admin-api"
         ports:
-            - "8006:15400"
+            - "8006:8006"
         volumes:
             - ./app/:/app
         environment:

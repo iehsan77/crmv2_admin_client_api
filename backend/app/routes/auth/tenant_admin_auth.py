@@ -599,14 +599,34 @@ def get_permissions(profile_id):
 async def tenant_login(request: Request):
     try:
         # Get and validate form data
-        user_credentials = await request.form()
-        email = user_credentials.get("email")
-        password = user_credentials.get("password")
+        try:
+            user_credentials = await request.form()
+            email = user_credentials.get("email")
+            password = user_credentials.get("password")
+        except Exception as form_error:
+            # If form parsing fails, try JSON
+            try:
+                body = await request.json()
+                email = body.get("email")
+                password = body.get("password")
+            except Exception as json_error:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "status": status.HTTP_400_BAD_REQUEST,
+                        "message": "Failed to parse request data. Expected form data or JSON.",
+                        "form_error": str(form_error),
+                        "json_error": str(json_error)
+                    }
+                )
 
         if not email or not password:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={"status": status.HTTP_400_BAD_REQUEST, "message": "Email and password are required"}
+                content={
+                    "status": status.HTTP_400_BAD_REQUEST, 
+                    "message": "Email and password are required"
+                }
             )
 
         # Get browser info from user agent

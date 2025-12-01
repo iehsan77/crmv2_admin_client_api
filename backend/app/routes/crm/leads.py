@@ -330,6 +330,7 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
     """
     Return a cards-only statistics payload (without chart_info), distinct from the chart endpoint.
     Mirrors accounts' get-statistics behavior: an array of card objects with totals and lineChartData.
+    Enterprise-grade: Accurate counts with proper date filtering and percentage change calculations.
     """
     try:
         form = dict(await request.form())
@@ -348,17 +349,26 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
             except Exception:
                 return None
 
+        # Parse dates and ensure to_date includes full day (end of day)
         if from_date_str and to_date_str:
             from_date = _parse_iso_naive_utc(from_date_str) or datetime.utcnow()
             to_date = _parse_iso_naive_utc(to_date_str) or datetime.utcnow()
+            # Set to_date to end of day (23:59:59.999999) to include full selected day
+            to_date = to_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            # Set from_date to start of day (00:00:00.000000)
+            from_date = from_date.replace(hour=0, minute=0, second=0, microsecond=0)
         else:
-            to_date = datetime.utcnow()
-            from_date = to_date
+            to_date = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
+            from_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
-        # Anchor the 7-day chart to the provided to_date
-        now_dt = to_date
+        # Calculate previous period for percentage change (same duration, before from_date)
+        period_duration = (to_date - from_date).total_seconds()
+        prev_to_date = from_date - timedelta(seconds=1)  # End of previous period
+        prev_from_date = prev_to_date - timedelta(seconds=period_duration)  # Start of previous period
+        prev_from_date = prev_from_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        prev_to_date = prev_to_date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-        # Build date filter and merge into base_query so all queries use it automatically
+        # Build date filter for current period
         date_filter = {
             "$or": [
                 {"created_at": {"$gte": from_date, "$lte": to_date}},
@@ -372,16 +382,51 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
                 ]}},
             ]
         }
+
+        # Build date filter for previous period
+        prev_date_filter = {
+            "$or": [
+                {"created_at": {"$gte": prev_from_date, "$lte": prev_to_date}},
+                {"$expr": {"$and": [
+                    {"$gte": [{"$toDate": "$created_at"}, prev_from_date]},
+                    {"$lte": [{"$toDate": "$created_at"}, prev_to_date]}
+                ]}},
+                {"$expr": {"$and": [
+                    {"$gte": [{"$toDate": "$createdon"}, prev_from_date]},
+                    {"$lte": [{"$toDate": "$createdon"}, prev_to_date]}
+                ]}},
+            ]
+        }
         
         base_query = {"tenant_id": tenant_id, "deleted": {"$ne": 1}, **date_filter}
+        prev_base_query = {"tenant_id": tenant_id, "deleted": {"$ne": 1}, **prev_date_filter}
 
-        qualified_status_ids = [3]
-        dropped_status_ids = [7]
+        # Status IDs based on LEADS_STATUS_OPTIONS
+        # 1: New Lead, 2: Contacted, 3: Qualified, 4: In Progress, 5: Negotiation, 6: Closed - Won, 7: Closed - Lost
+        qualified_status_ids = [3, 6]  # Qualified + Closed - Won
+        dropped_status_ids = [7]  # Closed - Lost
 
-        # All queries now automatically use base_query which includes date filter
+        # Current period counts
         total_leads = db.leads.count_documents(base_query)
         qualified_leads = db.leads.count_documents({**base_query, "status_id": {"$in": qualified_status_ids}})
         dropped_leads = db.leads.count_documents({**base_query, "status_id": {"$in": dropped_status_ids}})
+
+        # Previous period counts for percentage change calculation
+        prev_total_leads = db.leads.count_documents(prev_base_query)
+        prev_qualified_leads = db.leads.count_documents({**prev_base_query, "status_id": {"$in": qualified_status_ids}})
+        prev_dropped_leads = db.leads.count_documents({**prev_base_query, "status_id": {"$in": dropped_status_ids}})
+
+        # Calculate percentage changes
+        def calculate_change(current, previous):
+            if previous == 0:
+                return "+0%" if current == 0 else "+100%"
+            change = ((current - previous) / previous) * 100
+            sign = "+" if change >= 0 else ""
+            return f"{sign}{change:.1f}%"
+
+        total_change = calculate_change(total_leads, prev_total_leads)
+        qualified_change = calculate_change(qualified_leads, prev_qualified_leads)
+        dropped_change = calculate_change(dropped_leads, prev_dropped_leads)
 
         # Dynamic source breakdown
         sources = list(db.leads.aggregate([
@@ -449,15 +494,23 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
         except Exception:
             leads_penetration = 0.0
 
-        # 7-day line chart values (with date filter for each day)
+        # 7-day line chart values (last 7 days within the date range)
         line_chart_data = []
+        # Calculate days to show (up to 7 days, but within the date range)
+        days_in_range = min(7, (to_date - from_date).days + 1)
+        chart_start_date = max(from_date, to_date - timedelta(days=6))
+        
         for i in range(7):
-            day_start = (now_dt - timedelta(days=6 - i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            # Calculate day relative to to_date (last 7 days)
+            day_start = (to_date - timedelta(days=6 - i)).replace(hour=0, minute=0, second=0, microsecond=0)
             day_end = day_start + timedelta(days=1)
+            
             # Only count if day is within the requested date range
-            if day_start < from_date or day_start >= to_date:
+            if day_start < from_date or day_start > to_date:
                 line_chart_data.append({"value": 0})
                 continue
+            
+            # Build day filter
             day_filter = {
                 "$or": [
                     {"created_at": {"$gte": day_start, "$lt": day_end}},
@@ -471,20 +524,30 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
                     ]}},
                 ]
             }
-            # Combine base_query with day_filter properly
-            # We need to merge tenant_id, deleted, and combine both date filters
+            
+            # Count leads for this specific day (within date range)
             query = {
                 "tenant_id": tenant_id,
                 "deleted": {"$ne": 1},
                 "$and": [
-                    date_filter,  # Overall date range (from_date to to_date)
-                    day_filter,   # Specific day range (day_start to day_end)
+                    {"$or": [
+                        {"created_at": {"$gte": from_date, "$lte": to_date}},
+                        {"$expr": {"$and": [
+                            {"$gte": [{"$toDate": "$created_at"}, from_date]},
+                            {"$lte": [{"$toDate": "$created_at"}, to_date]}
+                        ]}},
+                        {"$expr": {"$and": [
+                            {"$gte": [{"$toDate": "$createdon"}, from_date]},
+                            {"$lte": [{"$toDate": "$createdon"}, to_date]}
+                        ]}},
+                    ]},
+                    day_filter,
                 ]
             }
             cnt = db.leads.count_documents(query)
-            line_chart_data.append({"value": cnt})
+            line_chart_data.append({"value": int(cnt)})
 
-        # Compute live response time metrics from recent activity (last 30 days)
+        # Compute live response time metrics from all leads in date range
         def _parse_dt(value):
             try:
                 if isinstance(value, datetime):
@@ -497,52 +560,95 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
                 return None
             return None
 
-        # Fetch leads within the date range for response time calculation
-        # base_query already includes the date filter, so we can use it directly
-        recent_leads_cursor = db.leads.find(
-            base_query,
-            {
+        # Fetch ALL leads within the date range for accurate response time calculation
+        # Use aggregation for better performance with large datasets
+        response_time_pipeline = [
+            {"$match": base_query},
+            {"$project": {
                 "_id": 0,
                 "id": 1,
                 "created_at": 1,
                 "createdon": 1,
                 "source_id": 1,
-            }
-        ).sort("id", -1).limit(500)
+            }},
+            {"$limit": 10000}  # Reasonable limit for performance
+        ]
+        
+        recent_leads = list(db.leads.aggregate(response_time_pipeline))
 
         total_deltas = []  # in hours
         email_deltas = []
         phone_deltas = []
-        for lead_doc in recent_leads_cursor:
-            lead_id = lead_doc.get("id")
-            created_dt = _parse_dt(lead_doc.get("created_at")) or _parse_dt(lead_doc.get("createdon"))
-            if not lead_id or not created_dt:
-                continue
-            # earliest activity for this lead
-            act = db.activity_logs.find_one(
-                {
+        
+        # Get all activity logs for these leads in one query for better performance
+        lead_ids = [int(lead_doc.get("id")) for lead_doc in recent_leads if lead_doc.get("id")]
+        
+        if lead_ids:
+            # Get earliest activity for each lead using aggregation
+            activity_pipeline = [
+                {"$match": {
                     "entity_type": "lead",
-                    "entity_id": int(lead_id),
+                    "entity_id": {"$in": lead_ids},
                     "tenant_id": tenant_id,
                     "deleted": {"$ne": 1},
-                },
-                {"_id": 0, "createdon": 1, "timestamp": 1},
-                sort=[("createdon", 1), ("timestamp", 1)]
-            )
-            if not act:
-                continue
-            first_act_dt = _parse_dt(act.get("createdon")) or _parse_dt(act.get("timestamp"))
-            if not first_act_dt:
-                continue
-            delta_hours = max(0.0, (first_act_dt - created_dt).total_seconds() / 3600.0)
-            total_deltas.append(delta_hours)
+                }},
+                {"$project": {
+                    "_id": 0,
+                    "entity_id": 1,
+                    "createdon": 1,
+                    "timestamp": 1,
+                    "activity_date": {
+                        "$cond": [
+                            {"$ne": [{"$type": "$createdon"}, "missing"]},
+                            {"$toDate": "$createdon"},
+                            {"$toDate": "$timestamp"}
+                        ]
+                    }
+                }},
+                {"$sort": {"activity_date": 1}},
+                {"$group": {
+                    "_id": "$entity_id",
+                    "first_activity": {"$first": "$activity_date"}
+                }}
+            ]
+            
+            earliest_activities = {
+                doc["_id"]: doc["first_activity"]
+                for doc in db.activity_logs.aggregate(activity_pipeline)
+            }
+            
+            # Calculate response times
+            for lead_doc in recent_leads:
+                lead_id = lead_doc.get("id")
+                if not lead_id:
+                    continue
+                    
+                created_dt = _parse_dt(lead_doc.get("created_at")) or _parse_dt(lead_doc.get("createdon"))
+                if not created_dt:
+                    continue
+                
+                first_act_dt = earliest_activities.get(int(lead_id))
+                if not first_act_dt:
+                    continue
+                
+                # Parse activity date if it's a datetime object
+                if isinstance(first_act_dt, datetime):
+                    first_act_dt_parsed = first_act_dt
+                else:
+                    first_act_dt_parsed = _parse_dt(str(first_act_dt))
+                
+                if not first_act_dt_parsed:
+                    continue
+                
+                delta_hours = max(0.0, (first_act_dt_parsed - created_dt).total_seconds() / 3600.0)
+                total_deltas.append(delta_hours)
 
-            src = lead_doc.get("source_id")
-            # Match your source ids if different
-            if src == 2:  # Email Campaigns
-                email_deltas.append(delta_hours)
-            if src == 3:  # Call-in Leads
-                phone_deltas.append(delta_hours)
+                src = lead_doc.get("source_id")
+                # Source IDs: 1=Website, 2=Email Campaigns, 3=Call-in Leads, 4=Manual
+                if src == 2:  # Email Campaigns
+                    email_deltas.append(delta_hours)
+                elif src == 3:  # Call-in Leads
+                    phone_deltas.append(delta_hours)
 
         def _avg(lst):
             if not lst:
@@ -552,6 +658,75 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
         avg_response_time_hours = _avg(total_deltas)
         email_leads_hours = _avg(email_deltas)
         phone_leads_hours = _avg(phone_deltas)
+        
+        # Calculate response time change (compare with previous period)
+        prev_response_time_pipeline = [
+            {"$match": prev_base_query},
+            {"$project": {
+                "_id": 0,
+                "id": 1,
+                "created_at": 1,
+                "createdon": 1,
+            }},
+            {"$limit": 10000}
+        ]
+        prev_leads = list(db.leads.aggregate(prev_response_time_pipeline))
+        prev_lead_ids = [int(lead_doc.get("id")) for lead_doc in prev_leads if lead_doc.get("id")]
+        prev_total_deltas = []
+        
+        if prev_lead_ids:
+            prev_activity_pipeline = [
+                {"$match": {
+                    "entity_type": "lead",
+                    "entity_id": {"$in": prev_lead_ids},
+                    "tenant_id": tenant_id,
+                    "deleted": {"$ne": 1},
+                }},
+                {"$project": {
+                    "_id": 0,
+                    "entity_id": 1,
+                    "createdon": 1,
+                    "timestamp": 1,
+                    "activity_date": {
+                        "$cond": [
+                            {"$ne": [{"$type": "$createdon"}, "missing"]},
+                            {"$toDate": "$createdon"},
+                            {"$toDate": "$timestamp"}
+                        ]
+                    }
+                }},
+                {"$sort": {"activity_date": 1}},
+                {"$group": {
+                    "_id": "$entity_id",
+                    "first_activity": {"$first": "$activity_date"}
+                }}
+            ]
+            prev_earliest_activities = {
+                doc["_id"]: doc["first_activity"]
+                for doc in db.activity_logs.aggregate(prev_activity_pipeline)
+            }
+            
+            for lead_doc in prev_leads:
+                lead_id = lead_doc.get("id")
+                if not lead_id:
+                    continue
+                created_dt = _parse_dt(lead_doc.get("created_at")) or _parse_dt(lead_doc.get("createdon"))
+                if not created_dt:
+                    continue
+                first_act_dt = prev_earliest_activities.get(int(lead_id))
+                if not first_act_dt:
+                    continue
+                if isinstance(first_act_dt, datetime):
+                    first_act_dt_parsed = first_act_dt
+                else:
+                    first_act_dt_parsed = _parse_dt(str(first_act_dt))
+                if not first_act_dt_parsed:
+                    continue
+                delta_hours = max(0.0, (first_act_dt_parsed - created_dt).total_seconds() / 3600.0)
+                prev_total_deltas.append(delta_hours)
+        
+        prev_avg_response_time = _avg(prev_total_deltas)
+        response_time_change = calculate_change(avg_response_time_hours, prev_avg_response_time) if prev_avg_response_time > 0 else "+0%"
 
         cards = [
             {
@@ -559,8 +734,8 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
                 "iconClass": "",
                 "title": "Qualified Leads",
                 "total": str(qualified_leads),
-                "change": "+9%",
-                "description": f"Interested in Residentials: {residential_count} | Interested in Commercial: {commercial_count} | Leads Peneteration: {int(leads_penetration)}%",
+                "change": qualified_change,
+                "description": f"Interested in Residentials: {residential_count} | Interested in Commercial: {commercial_count} | Leads Penetration: {int(leads_penetration)}%",
                 "lineChartData": line_chart_data,
             },
             {
@@ -568,7 +743,7 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
                 "iconClass": "",
                 "title": "Average Lead Response Time",
                 "total": f"{avg_response_time_hours} Hours",
-                "change": "+9%",
+                "change": response_time_change,
                 "description": f"Email Leads: {email_leads_hours}hrs | Phone Leads: {phone_leads_hours}hrs",
                 "lineChartData": line_chart_data,
             },
@@ -577,8 +752,8 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
                 "iconClass": "",
                 "title": "Total Leads",
                 "total": str(total_leads),
-                "change": "+1.2%",
-                "description": f"Website:{website_count} | Email Campaigns: {email_campaign_count} | Call-in Leads: {call_in_count} | Manually Added: {manual_count}",
+                "change": total_change,
+                "description": f"Website: {website_count} | Email Campaigns: {email_campaign_count} | Call-in Leads: {call_in_count} | Manually Added: {manual_count}",
                 "lineChartData": line_chart_data,
             },
             {
@@ -586,7 +761,7 @@ async def get_leads_cards_statistics(request: Request, user_detail: dict = Depen
                 "iconClass": "",
                 "title": "Dropped Leads",
                 "total": str(dropped_leads),
-                "change": "-4.6%",
+                "change": dropped_change,
                 "description": dropped_desc,
                 "lineChartData": line_chart_data,
             },

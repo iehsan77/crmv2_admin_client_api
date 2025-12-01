@@ -20,7 +20,7 @@ export default function FormProvider({
 }) {
   return (
     <FORM {...methods}>
-      <form onSubmit={onSubmit} className={`space-y-4 ${className}`}>
+      <form onSubmit={onSubmit} className={`space-y-4 ${className}`} noValidate>
         {children}
       </form>
     </FORM>

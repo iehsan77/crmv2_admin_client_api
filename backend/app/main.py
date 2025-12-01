@@ -184,14 +184,12 @@ async def auth_middleware(request: Request, call_next):
     return response
 
 
-if config.WORKING_ENVIRONMENT == "development":
+# TrustedHostMiddleware - only enable in production for security
+# In development, we allow all hosts for easier local testing
+if config.WORKING_ENVIRONMENT != "development":
     app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1","sendgrid.api-docs.io","realstateapi.cloudapiserver.com","164.92.102.85","192.168.1.188","htdevexperts.com"] 
-        )
-else:
-      app.add_middleware(
-         TrustedHostMiddleware, allowed_hosts=["cloudapi.cloudapiserver.com","crmapi.cloudapiserver.com","htdevexperts.com"] 
-        )
+        TrustedHostMiddleware, allowed_hosts=["cloudapi.cloudapiserver.com", "crmapi.cloudapiserver.com", "htdevexperts.com"] 
+    )
 
 
 #app.include_router(api)

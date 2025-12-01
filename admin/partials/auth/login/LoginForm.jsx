@@ -40,7 +40,6 @@ const LoginForm = () => {
   } = methods;
 
   const onSubmit = async (formData) => {
-
     try {
       const response = await LOGIN(formData);
 

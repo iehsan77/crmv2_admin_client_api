@@ -8,10 +8,10 @@ import ModuleHeader from "@/partials/ModuleHeader";
 import WidgetSection from "@/components/WidgetSection";
 import LoadingSkeletonTable from "@/components/LoadingSkeletonTable";
 import RecordNotFound from "@/components/RecordNotFound";
-import Filters from "@/partials/crm/leads/Filters";
-import Columns from "@/partials/crm/leads/Columns";
-import ListCard from "@/partials/crm/leads/ListCard";
-import Kanban from "@/partials/crm/leads/Kanban";
+import Filters from "@/partials/CRM/leads/Filters";
+import Columns from "@/partials/CRM/leads/Columns";
+import ListCard from "@/partials/CRM/leads/ListCard";
+import Kanban from "@/partials/CRM/leads/Kanban";
 
 import ViewSwitcherAddBtn from "@/partials/crm/common/ViewSwitcherAddBtn";
 
@@ -54,13 +54,18 @@ export default function LeadsPage() {
         signal: controller.signal,
       });
 
-      console.log("response statistics 48");
-      console.log(response);
-
-      if (response?.status === 200) setter(response?.data ?? {});
-      else toast.error(response?.message || errorMsg);
+      if (response?.status === 200) {
+        setter(response?.data ?? {});
+      } else {
+        toast.error(response?.message || errorMsg);
+        setter({}); // Set empty data on error
+      }
     } catch (err) {
-      if (err.name !== "AbortError") console.error("Fetch error:", err);
+      if (err.name !== "AbortError") {
+        console.error("Fetch error:", err);
+        toast.error(err?.message || errorMsg);
+        setter({}); // Set empty data on error
+      }
     }
     return controller;
   };
@@ -109,52 +114,6 @@ export default function LeadsPage() {
   /** ---------- MEMOS ---------- **/
   const columns = useMemo(() => Columns({ page, limit }), [page, limit]);
   const hasData = records?.length > 0;
-
-  const SummaryChartData = {
-    // 🧠 Dummy data for demonstration
-    chartData: [
-      { day: "Mon", convertedLeads: 150, lostLeads: 150, allLeads: 300 },
-      { day: "Tue", convertedLeads: 300, lostLeads: 20, allLeads: 320 },
-      { day: "Wed", convertedLeads: 40, lostLeads: 300, allLeads: 340 },
-      { day: "Thr", convertedLeads: 300, lostLeads: 60, allLeads: 360 },
-      { day: "Fri", convertedLeads: 500, lostLeads: 500, allLeads: 1000 },
-      { day: "Sat", convertedLeads: 220, lostLeads: 200, allLeads: 420 },
-      { day: "Sun", convertedLeads: 100, lostLeads: 80, allLeads: 20 },
-    ],
-
-    chartConfig: {
-      title: "Leads Summary - Weekly",
-      titleRight: `
-                <span class="inline-flex items-center gap-1 mr-3">
-                  <span class="inline-block w-[10px] h-[10px] bg-[#6586E6] rounded-xs"></span>
-                  All Leads
-                </span>
-                <span class="inline-flex items-center gap-1 mr-3">
-                  <span class="inline-block w-[10px] h-[10px] bg-[#8DD3A0] rounded-xs"></span>
-                  Converted Leads
-                </span>
-                <span class="inline-flex items-center gap-1">
-                  <span class="inline-block w-[10px] h-[10px] bg-[#ED7F7A] rounded-xs"></span>
-                  Lost Leads
-                </span>`,
-      description: "",
-      series: [
-        { key: "allLeads", label: "All Leads", color: "#6586E6" },
-        {
-          key: "convertedLeads",
-          label: "Converted Leads",
-          color: "#8DD3A0",
-        },
-        { key: "lostLeads", label: "Lost Leads", color: "#ED7F7A" },
-      ],
-      options: {
-        height: 250,
-        yDomain: [0, 500],
-        xKey: "day",
-        showGrid: true,
-      },
-    },
-  };
 
   /** ---------- RENDER ---------- **/
   return (

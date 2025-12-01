@@ -9,7 +9,7 @@ import useCommonStore from "@/stores/useCommonStore";
 const useStatisticsStore = create((set) => ({
   statistics: [],
   statisticsLoading: false,
-  error: null, // ✅ define properly
+  error: null,
 
   // 📊 Fetch statistics
   fetchStatistics: async (url) => {
@@ -31,22 +31,40 @@ const useStatisticsStore = create((set) => ({
         from: new Date(range.from).toISOString(),
         to: new Date(range.to).toISOString(),
       };
-//console.log("body 26"); console.log(body);
 
       const response = await POST(url, body);
 
-console.log("statistics response 37"); console.log(response);
-
       if (response?.status === 200) {
-        set({ statistics: response?.data ?? [] });
+        // Ensure we have an array of statistics
+        const statisticsData = Array.isArray(response?.data) 
+          ? response.data 
+          : [];
+        
+        set({ 
+          statistics: statisticsData,
+          statisticsLoading: false,
+          error: null 
+        });
       } else {
         handleResponse(response);
+        set({ 
+          statistics: [],
+          statisticsLoading: false,
+          error: response?.message || "Failed to fetch statistics"
+        });
       }
     } catch (err) {
-      set({ error: err?.message || "Failed to fetch statistics" });
-      toast.error(err?.message || "Failed to fetch statistics");
-    } finally {
-      set({ statisticsLoading: false });
+      const errorMessage = err?.message || "Failed to fetch statistics";
+      set({ 
+        error: errorMessage,
+        statistics: [],
+        statisticsLoading: false 
+      });
+      
+      // Only show toast for non-abort errors
+      if (err.name !== "AbortError") {
+        toast.error(errorMessage);
+      }
     }
   },
 }));

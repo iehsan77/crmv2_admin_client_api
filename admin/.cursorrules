@@ -1,0 +1,958 @@
+# CRM Admin Client API - Cursor Rules
+
+## 📋 Project Overview
+This is a Next.js 15 CRM admin application using:
+- **Framework**: Next.js 15.3.2 with App Router
+- **State Management**: Zustand with factory patterns
+- **UI Library**: shadcn/ui (Radix UI primitives)
+- **Styling**: Tailwind CSS v4
+- **Forms**: React Hook Form with Zod validation
+- **Charts**: Recharts
+- **Icons**: Lucide React, React Icons
+- **Backend**: FastAPI (Python) - All API calls go through backend endpoints
+
+---
+
+## 🏗️ Architecture & File Structure
+
+### Directory Organization
+```
+admin/
+├── app/                    # Next.js App Router pages
+│   ├── (admin)/           # Admin route group
+│   │   ├── crm/           # CRM module pages
+│   │   │   ├── leads/     # Leads module
+│   │   │   │   ├── page.js          # Main listing page (MUST follow exact structure)
+│   │   │   │   ├── view/[id]/      # Detail view page
+│   │   │   │   │   ├── page.jsx    # View page
+│   │   │   │   │   └── layout.jsx  # View layout
+│   │   │   └── [module]/            # Other CRM modules (same structure)
+│   │   └── layout.js      # Admin layout wrapper
+│   └── (auth)/            # Auth route group
+├── components/            # Reusable UI components
+│   ├── ui/                # shadcn/ui components
+│   ├── FormFields/        # Form input components
+│   ├── FormControls/      # Form control components
+│   └── [Component].jsx    # Feature components
+├── partials/              # Module-specific partials
+│   └── CRM/               # CRM module partials
+│       ├── leads/         # Leads-specific components
+│       │   ├── Filters.jsx         # Filter component
+│       │   ├── FiltersForm.jsx     # Filter form
+│       │   ├── Columns.js          # Table column definitions
+│       │   ├── ListCard.jsx        # List view component
+│       │   ├── Kanban.jsx          # Kanban view component
+│       │   ├── RecordForm.jsx      # Add/Edit form
+│       │   └── view/               # View page components
+│       └── common/        # Shared CRM components
+├── stores/                # Zustand stores
+│   ├── crm/               # CRM module stores
+│   │   └── use[Module]Store.js  # Module store (uses factory)
+│   ├── factories/         # Store factory functions
+│   │   ├── createModuleStore.js
+│   │   ├── createFiltersStore.js
+│   │   └── createViewTabsStore.js
+│   └── use[Name]Store.js  # Feature stores
+├── utils/                 # Utility functions
+│   └── crm_endpoints.js   # API endpoint definitions
+├── constants/             # Constants and configurations
+│   ├── crm_constants.js   # CRM-specific constants
+│   └── general_constants.js # Shared constants
+├── helper/                # Helper functions
+│   ├── ServerSideActions.js  # Server actions (API calls)
+│   └── GeneralFunctions.js  # General utilities
+├── hooks/                 # Custom React hooks
+├── context/               # React Context providers
+└── lib/                   # Library utilities
+```
+
+---
+
+## 📝 Code Patterns & Conventions
+
+### 1. Page Component Structure (STRICT - MUST FOLLOW)
+
+#### CRM Module Listing Page (`app/(admin)/crm/[module]/page.js`)
+```javascript
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import toast from "react-hot-toast";
+
+// ✅ Import order: React → UI → Partials → Utils → Stores
+import { DataTable } from "@/components/DataTable2";
+import ModuleHeader from "@/partials/ModuleHeader";
+import WidgetSection from "@/components/WidgetSection";
+import LoadingSkeletonTable from "@/components/LoadingSkeletonTable";
+import RecordNotFound from "@/components/RecordNotFound";
+import Filters from "@/partials/crm/[module]/Filters";
+import Columns from "@/partials/crm/[module]/Columns";
+import ListCard from "@/partials/crm/[module]/ListCard";
+import Kanban from "@/partials/crm/[module]/Kanban";
+import ViewSwitcherAddBtn from "@/partials/crm/common/ViewSwitcherAddBtn";
+import ChartsAreaChart from "@/components/ChartsAreaChart";
+import ChartsPieChart from "@/components/ChartsPieChart";
+
+import { crm_endpoints } from "@/utils/crm_endpoints";
+import { POST } from "@/helper/ServerSideActions";
+
+import useCommonStore from "@/stores/useCommonStore";
+import use[Module]Store from "@/stores/crm/use[Module]Store";
+import useStatisticsStore from "@/stores/useStatisticsStore";
+
+export default function [Module]Page() {
+  const title = "[Module]";
+
+  /** ---------- STORE HOOKS ---------- **/
+  const { range, viewMode, setViewMode } = useCommonStore();
+  const { statistics, fetchStatistics, statisticsLoading } = useStatisticsStore();
+  const { records, fetchRecords, recordsLoading, page, limit } = use[Module]Store();
+
+  /** ---------- LOCAL STATE ---------- **/
+  const [summaryChartData, setSummaryChartData] = useState({});
+  const [statusChartData, setStatusChartData] = useState({});
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  /** ---------- DATA FETCH HELPERS ---------- **/
+  const fetchData = async (endpoint, setter, errorMsg) => {
+    const controller = new AbortController();
+    try {
+      const body = {
+        from: new Date(range.from).toISOString(),
+        to: new Date(range.to).toISOString(),
+      };
+      const response = await POST(endpoint, body, {
+        signal: controller.signal,
+      });
+      if (response?.status === 200) setter(response?.data ?? {});
+      else toast.error(response?.message || errorMsg);
+    } catch (err) {
+      if (err.name !== "AbortError") console.error("Fetch error:", err);
+    }
+    return controller;
+  };
+
+  /** ---------- EFFECTS ---------- **/
+  // Fetch statistics when range changes
+  useEffect(() => {
+    fetchStatistics(crm_endpoints.crm.[module].getStatistics);
+  }, [fetchStatistics, range]);
+
+  // Fetch records and reset view mode on mount
+  useEffect(() => {
+    fetchRecords();
+    setViewMode("table");
+  }, [fetchRecords, setViewMode]);
+
+  // Fetch charts data
+  useEffect(() => {
+    setSummaryLoading(true);
+    setStatusLoading(true);
+    const controllers = [];
+    (async () => {
+      const summaryCtrl = await fetchData(
+        crm_endpoints.crm.[module].getSummaryChartData,
+        setSummaryChartData,
+        "Failed to fetch summary data"
+      );
+      const statusCtrl = await fetchData(
+        crm_endpoints.crm.[module].getStatusChartData,
+        setStatusChartData,
+        "Failed to fetch status data"
+      );
+      controllers.push(summaryCtrl, statusCtrl);
+      setSummaryLoading(false);
+      setStatusLoading(false);
+    })();
+    return () => controllers.forEach((c) => c?.abort());
+  }, [range]);
+
+  /** ---------- MEMOS ---------- **/
+  const columns = useMemo(() => Columns({ page, limit }), [page, limit]);
+  const hasData = records?.length > 0;
+
+  /** ---------- RENDER ---------- **/
+  return (
+    <div className="space-y-6 pb-8">
+      {/* HEADER */}
+      <ModuleHeader title={title}>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <WidgetSection
+            data={statistics}
+            loading={statisticsLoading}
+            loadingCrdsQty={4}
+          />
+        </div>
+      </ModuleHeader>
+
+      {/* CHARTS */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="sm:col-span-2 py-1">
+          <ChartsAreaChart data={summaryChartData} loading={summaryLoading} />
+        </div>
+        <div className="sm:col-span-2 lg:col-span-1 py-1">
+          <ChartsPieChart
+            title="[Module] Status"
+            centerLabel="[Module] Status"
+            data={statusChartData}
+            loading={statusLoading}
+          />
+        </div>
+      </div>
+
+      {/* ACTIONS + FILTERS */}
+      <ViewSwitcherAddBtn module="[module]" title="[Module]" />
+      <Filters />
+
+      {/* TABLE / LIST / KANBAN */}
+      {recordsLoading ? (
+        <LoadingSkeletonTable />
+      ) : hasData ? (
+        <>
+          {viewMode === "table" && (
+            <DataTable
+              columns={columns}
+              data={records}
+              useStore={use[Module]Store}
+            />
+          )}
+          {viewMode === "list" && (
+            <ListCard records={records} useStore={use[Module]Store} />
+          )}
+          {viewMode === "grid" && <Kanban />}
+        </>
+      ) : (
+        <RecordNotFound simple />
+      )}
+    </div>
+  );
+}
+```
+
+### 2. State Management (Zustand) - STRICT PATTERN
+
+#### Store Factory Pattern (DO NOT MODIFY FACTORIES)
+```javascript
+// stores/factories/createModuleStore.js - DO NOT MODIFY
+// Use existing factory, only create module-specific stores
+```
+
+#### Module Store Usage (MUST FOLLOW)
+```javascript
+// stores/crm/useLeadsStore.js
+"use client";
+
+import { getKeysObject } from "@/helper/GeneralFunctions";
+import { crm_endpoints } from "@/utils/crm_endpoints";
+import {
+  LEADS_AVAILABLE_VIEWS,
+  LEADS_INITIAL_VIEWS,
+  LEADS_AVAILABLE_FILTERS,
+} from "@/constants/crm_constants";
+
+import createModuleStore from "@/stores/factories/createModuleStore";
+import createFiltersStore from "@/stores/factories/createFiltersStore";
+import createViewTabsStore from "@/stores/factories/createViewTabsStore";
+import createAssociationStore from "@/stores/factories/createAssociationStore";
+import createModuleDetailTabsStore from "@/stores/factories/createModuleDetailTabsStore";
+
+// 🔹 Filters Store
+export const useLeadsFiltersStore = createFiltersStore(
+  getKeysObject(LEADS_AVAILABLE_FILTERS)
+);
+
+// 🔹 View Tabs Store
+export const useLeadsViewTabsStore = createViewTabsStore({
+  availableTabs: LEADS_AVAILABLE_VIEWS,
+  initialTabs: LEADS_INITIAL_VIEWS,
+  defaultTab: "all_leads",
+  maxTabs: 6,
+});
+
+// 🔹 View Details Page Tabs Store
+export const useLeadsTabsStore = createModuleDetailTabsStore({
+  tabs: [
+    { key: "tab1", title: "Overview" },
+    {
+      key: "tab2",
+      title: "Activity",
+      subTabs: [
+        { key: "subTab1", title: "Timeline" },
+        { key: "subTab2", title: "Notes" },
+        // ...
+      ],
+    },
+  ],
+  defaultTab: "tab1",
+  defaultSubTab: "subTab1",
+});
+
+// 🔹 Association Store
+export const useLeadsAssociationStore = createAssociationStore();
+
+// 🔹 Main Module Store
+const { leads } = crm_endpoints?.crm || {};
+const useLeadsStore = createModuleStore({
+  moduleName: "Lead",
+  endpoints: {
+    get: leads?.get,
+    save: leads?.save,
+    getByStatus: leads?.getByStatus,
+    delete: (id) => leads?.delete(id),
+    getDetails: (id) => leads?.getDetails(id),
+    restore: (id) => leads?.restore(id),
+    favorite: (id, fav) => leads?.favorite(id, fav),
+  },
+  filtersStore: useLeadsFiltersStore,
+  viewTabsStore: useLeadsViewTabsStore,
+});
+
+export default useLeadsStore;
+```
+
+### 3. API & Data Fetching - BACKEND INTEGRATION
+
+#### Backend API Pattern (FastAPI)
+- **ALL API calls MUST go through backend endpoints**
+- Backend uses FastAPI with MongoDB
+- Response format: `{ status: 200, message: "...", data: {...} }`
+- Error format: `{ status: 400/500, message: "Error message", detail: {...} }`
+
+#### Server Actions Pattern
+```javascript
+// helper/ServerSideActions.js
+"use server";
+
+export const POST = async (endpoint, formData = {}, tags) => {
+  try {
+    const token = await fetchToken();
+    const body = new FormData();
+    
+    for (const [key, value] of Object.entries(formData)) {
+      body.append(key, value);
+    }
+    
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    
+    return await response.json();
+  } catch (error) {
+    console.error("POST error:", error);
+    return { error: true, message: error?.message };
+  }
+};
+```
+
+#### Client-Side Fetching Pattern (MUST USE)
+```javascript
+// ✅ ALWAYS use AbortController for cleanup
+const fetchData = async (endpoint, setter, errorMsg) => {
+  const controller = new AbortController();
+  try {
+    const response = await POST(endpoint, body, {
+      signal: controller.signal,
+    });
+    if (response?.status === 200) {
+      setter(response?.data ?? {});
+    } else {
+      toast.error(response?.message || errorMsg);
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("Fetch error:", err);
+      toast.error(err?.message || errorMsg);
+    }
+  }
+  return controller;
+};
+
+// ✅ Cleanup in useEffect
+useEffect(() => {
+  const controllers = [];
+  (async () => {
+    const ctrl = await fetchData(endpoint, setter, errorMsg);
+    controllers.push(ctrl);
+  })();
+  return () => controllers.forEach((c) => c?.abort());
+}, [dependencies]);
+```
+
+#### Response Handling Pattern
+```javascript
+// ✅ Use handleResponse helper for consistent error handling
+import { handleResponse } from "@/helper/ClientSideActions";
+
+const response = await POST(endpoint, body);
+if (response?.status === 200) {
+  // Success handling
+  toast.success(response?.message || "Success");
+} else {
+  handleResponse(response); // Handles 403, session expiry, etc.
+}
+```
+
+### 4. UI Component Patterns
+
+#### shadcn/ui Components
+- Always import from `@/components/ui/[component]`
+- Use component variants (e.g., `variant="outline"`, `size="sm"`)
+- Follow shadcn/ui API patterns exactly
+
+#### Form Components (React Hook Form + Zod)
+```javascript
+"use client";
+
+import { FormProvider, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { FormProvider as CustomFormProvider } from "@/components/FormControls/FormProvider";
+
+const schema = z.object({
+  title: z.string().min(1, "Title is required"),
+  email: z.string().email("Invalid email"),
+  phone: z.string().optional(),
+});
+
+export default function RecordForm({ record = null }) {
+  const form = useForm({
+    resolver: zodResolver(schema),
+    defaultValues: record || {},
+  });
+
+  const onSubmit = async (data) => {
+    try {
+      const response = await POST(endpoint, data);
+      if (response?.status === 200) {
+        toast.success(response?.message || "Saved successfully");
+        // Close drawer or navigate
+      }
+    } catch (err) {
+      toast.error(err?.message || "Failed to save");
+    }
+  };
+
+  return (
+    <CustomFormProvider>
+      <FormProvider {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          {/* Form fields */}
+        </form>
+      </FormProvider>
+    </CustomFormProvider>
+  );
+}
+```
+
+#### Loading States (MUST IMPLEMENT)
+```javascript
+// ✅ Always show loading skeletons
+{recordsLoading ? (
+  <LoadingSkeletonTable />
+) : hasData ? (
+  <DataTable columns={columns} data={records} useStore={useStore} />
+) : (
+  <RecordNotFound simple />
+)}
+
+// ✅ For charts
+{loading ? (
+  <LoadingSkeletonCard />
+) : (
+  <ChartsAreaChart data={data} loading={false} />
+)}
+```
+
+#### Error Handling (MUST USE)
+```javascript
+// ✅ Use toast for user-facing errors
+import toast from "react-hot-toast";
+import { handleResponse } from "@/helper/ClientSideActions";
+
+try {
+  const response = await POST(endpoint, body);
+  if (response?.status === 200) {
+    toast.success(response?.message || "Success");
+  } else {
+    handleResponse(response);
+  }
+} catch (err) {
+  console.error("Request failed:", err);
+  toast.error(err?.message || "Request failed");
+}
+```
+
+### 5. Styling Conventions
+
+#### Tailwind CSS (STRICT)
+- Use Tailwind utility classes ONLY
+- Follow responsive breakpoints: `sm:`, `md:`, `lg:`, `xl:`, `2xl:`
+- Use semantic color tokens: `bg-primary`, `text-muted-foreground`
+- NO custom CSS files unless absolutely necessary
+
+#### Component Styling
+```javascript
+// ✅ Use cn() utility for conditional classes
+import { cn } from "@/lib/utils";
+
+<div className={cn(
+  "base-classes",
+  condition && "conditional-classes",
+  className // Allow prop override
+)} />
+```
+
+#### Card Components
+```javascript
+// ✅ Use Card components from ui/card
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+
+<Card className="rounded-xl shadow-sm">
+  <CardHeader>
+    <CardTitle>Title</CardTitle>
+    <CardDescription>Description</CardDescription>
+  </CardHeader>
+  <CardContent>
+    {/* Content */}
+  </CardContent>
+</Card>
+```
+
+### 6. Performance Optimization (CRITICAL)
+
+#### Dynamic Imports (MUST USE for heavy components)
+```javascript
+// ✅ Use dynamic imports for heavy components
+import dynamic from "next/dynamic";
+
+const HeavyComponent = dynamic(() => import("@/components/HeavyComponent"), {
+  loading: () => <LoadingSkeleton />,
+  ssr: false, // If component uses browser-only APIs
+});
+
+// ✅ Use for forms in drawers
+const RecordForm = dynamic(() =>
+  import(`@/partials/crm/${module}/RecordForm`).catch(() => {
+    console.warn(`⚠️ RecordForm not found for module: ${module}`);
+    return () => <div>Form not found</div>;
+  })
+);
+```
+
+#### Memoization (MUST USE)
+```javascript
+// ✅ Memoize expensive computations
+const columns = useMemo(() => Columns({ page, limit }), [page, limit]);
+
+// ✅ Memoize filtered/sorted data
+const filteredRecords = useMemo(() => {
+  return records.filter(/* filter logic */);
+}, [records, filterCriteria]);
+
+// ✅ Memoize chart data transformations
+const chartData = useMemo(() => {
+  return transformDataForChart(rawData);
+}, [rawData]);
+```
+
+#### React Optimization
+```javascript
+// ✅ Use React.memo for expensive components
+import React from "react";
+
+export default React.memo(function ExpensiveComponent({ data }) {
+  // Component logic
+}, (prevProps, nextProps) => {
+  // Custom comparison if needed
+  return prevProps.data.id === nextProps.data.id;
+});
+
+// ✅ Use useCallback for stable function references
+const handleClick = useCallback(() => {
+  // Handler logic
+}, [dependencies]);
+
+// ✅ Use useMemo for derived state
+const sortedData = useMemo(() => {
+  return [...data].sort((a, b) => a.name.localeCompare(b.name));
+}, [data]);
+```
+
+#### Pagination (MUST IMPLEMENT)
+```javascript
+// ✅ Always use server-side pagination
+const { page, pages, limit, setPage } = useStore();
+
+// In store factory, pagination is handled automatically
+// Backend returns: { records: [], page: 1, pages: 10, total: 200 }
+```
+
+#### Request Debouncing (USE FOR SEARCH)
+```javascript
+// ✅ Debounce search/filter inputs
+import { useDebouncedCallback } from "use-debounce";
+
+const debouncedSearch = useDebouncedCallback((value) => {
+  fetchRecords({ search: value });
+}, 300);
+```
+
+### 7. File Naming Conventions (STRICT)
+
+- **Pages**: `page.js`, `page.jsx` (Next.js App Router)
+- **Components**: `PascalCase.jsx` or `PascalCase.js`
+- **Stores**: `use[Name]Store.js` (camelCase with "use" prefix)
+- **Utils**: `camelCase.js`
+- **Constants**: `UPPER_SNAKE_CASE` for constants
+- **Partials**: `PascalCase.jsx` (module-specific components)
+
+### 8. Import Organization (MUST FOLLOW)
+
+```javascript
+// ✅ Import order (enforce with comments):
+// 1. React and Next.js
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+
+// 2. Third-party libraries
+import toast from "react-hot-toast";
+import { format } from "date-fns";
+
+// 3. UI Components (shadcn/ui first, then custom)
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import DataTable from "@/components/DataTable2";
+import LoadingSkeletonTable from "@/components/LoadingSkeletonTable";
+
+// 4. Partials (module-specific)
+import ModuleHeader from "@/partials/ModuleHeader";
+import Filters from "@/partials/crm/leads/Filters";
+import Columns from "@/partials/crm/leads/Columns";
+
+// 5. Utils and Helpers
+import { crm_endpoints } from "@/utils/crm_endpoints";
+import { POST } from "@/helper/ServerSideActions";
+import { formatDateTime } from "@/helper/GeneralFunctions";
+
+// 6. Constants
+import { LEADS_STATUS_OPTIONS } from "@/constants/crm_constants";
+
+// 7. Stores
+import useCommonStore from "@/stores/useCommonStore";
+import useLeadsStore from "@/stores/crm/useLeadsStore";
+```
+
+### 9. Constants & Configuration
+
+#### Module Constants Pattern
+```javascript
+// constants/crm_constants.js
+export const LEADS_STATUS_OPTIONS = [
+  { label: "New Lead", value: "1" },
+  { label: "Contacted", value: "2" },
+  // ...
+];
+
+export const LEADS_AVAILABLE_VIEWS = [
+  {
+    title: "Lead Ownership",
+    options: [
+      { label: "All Leads", value: "all_leads", default: true },
+      { label: "My Leads", value: "my_leads", default: true },
+      // ...
+    ],
+  },
+];
+
+export const LEADS_INITIAL_VIEWS = LEADS_AVAILABLE_VIEWS.flatMap((group) =>
+  group.options.filter((opt) => opt.default)
+);
+
+export const LEADS_AVAILABLE_FILTERS = [
+  {
+    title: "Basic Info",
+    options: [
+      { label: "Lead Name", value: "title", default: true },
+      { label: "Email", value: "email" },
+      // ...
+    ],
+  },
+];
+
+export const LEADS_INITIAL_FILTERS = LEADS_AVAILABLE_FILTERS.flatMap((group) =>
+  group.options.filter((opt) => opt.default)
+);
+```
+
+#### Endpoint Definitions
+```javascript
+// utils/crm_endpoints.js
+const API_DOMAIN = process.env.NEXT_PUBLIC_API_DOMAIN || "http://localhost:8000";
+
+export const crm_endpoints = {
+  crm: {
+    leads: {
+      getStatistics: `${API_DOMAIN}/crm/leads/get-statistics`,
+      getSummaryChartData: `${API_DOMAIN}/crm/leads/get-lead-summary-chart-data`,
+      getStatusChartData: `${API_DOMAIN}/crm/leads/get-lead-status-chart-data`,
+      get: `${API_DOMAIN}/crm/leads/get`,
+      save: `${API_DOMAIN}/crm/leads/save`,
+      getDetails: (id) => `${API_DOMAIN}/crm/leads/details/get/${id}`,
+      delete: (id) => `${API_DOMAIN}/crm/leads/${id}/deleted/1`,
+      restore: (id) => `${API_DOMAIN}/crm/leads/${id}/deleted/0`,
+      favorite: (id, v) => `${API_DOMAIN}/crm/leads/${id}/favorite/${v}`,
+    },
+  },
+};
+```
+
+### 10. Error Boundaries & Validation
+
+#### Form Validation (Zod)
+```javascript
+// ✅ Use Zod for schema validation
+import { z } from "zod";
+
+const schema = z.object({
+  email: z.string().email("Invalid email"),
+  phone: z.string().min(10, "Phone must be at least 10 digits"),
+  status_id: z.string().min(1, "Status is required"),
+});
+
+// ✅ Validate in form submission
+const onSubmit = async (data) => {
+  try {
+    const validated = schema.parse(data);
+    const response = await POST(endpoint, validated);
+    // Handle response
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      err.errors.forEach((error) => {
+        form.setError(error.path[0], { message: error.message });
+      });
+    }
+  }
+};
+```
+
+### 11. Accessibility (MUST IMPLEMENT)
+
+- Use semantic HTML elements (`<nav>`, `<main>`, `<section>`, etc.)
+- Add `aria-label` for icon-only buttons
+- Ensure keyboard navigation works (Tab, Enter, Escape)
+- Use proper heading hierarchy (h1 → h2 → h3)
+- Add loading states with `aria-busy="true"`
+- Provide focus indicators for interactive elements
+
+```javascript
+// ✅ Accessible button
+<Button
+  aria-label="Add new lead"
+  onClick={handleAdd}
+>
+  <Plus className="w-4 h-4" />
+  Add Lead
+</Button>
+
+// ✅ Accessible loading state
+<div aria-busy={loading} aria-live="polite">
+  {loading ? "Loading..." : content}
+</div>
+```
+
+### 12. Responsive Design (MOBILE-FIRST)
+
+```javascript
+// ✅ Mobile-first approach
+<div className="
+  grid 
+  grid-cols-1 
+  sm:grid-cols-2 
+  lg:grid-cols-3 
+  xl:grid-cols-4 
+  gap-4
+">
+  {/* Content */}
+</div>
+
+// ✅ Hide/show based on screen size
+<div className="hidden lg:block">
+  {/* Desktop only */}
+</div>
+<div className="block lg:hidden">
+  {/* Mobile only */}
+</div>
+
+// ✅ Responsive text sizes
+<h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold">
+  Title
+</h1>
+```
+
+---
+
+## 🎨 UI/UX Guidelines (ENHANCED)
+
+### Layout Structure (STRICT ORDER)
+1. **ModuleHeader**: Title, date range picker, collapse button
+   - Contains WidgetSection with summary cards
+2. **Charts Section**: Data visualization (2-column grid)
+   - Area chart (2 columns) + Pie chart (1 column)
+3. **ViewSwitcherAddBtn**: View mode switcher + Add button
+4. **Filters**: Filter controls and view tabs
+5. **Data Display**: Table/List/Kanban view based on viewMode
+
+### Color Scheme (CONSISTENT)
+- **Primary**: `oklch(0.57 0.17 257.38)` (Purple/Blue)
+- **Cards Background**: `bg-[#F5F9FF]` with `border-[#CCE1FF]`
+- **Table Header**: `bg-[#F5F9FF]`
+- **Text Primary**: `text-gray-900`
+- **Text Secondary**: `text-gray-700`
+- **Text Muted**: `text-muted-foreground`
+- **Borders**: `border-gray-300`
+- **Hover States**: `hover:bg-muted/50`
+
+### Spacing (CONSISTENT)
+- **Page Container**: `space-y-6 pb-8`
+- **Section Gaps**: `gap-4` for grids, `space-y-6` for vertical sections
+- **Card Padding**: `p-4` or `p-6`
+- **Table Padding**: `px-4 py-2`
+
+### Typography (CONSISTENT)
+- **Page Title**: `text-3xl font-semibold text-gray-900`
+- **Section Title**: `text-xl font-semibold`
+- **Card Title**: `text-lg font-semibold`
+- **Body Text**: `text-sm` or `text-base`
+- **Muted Text**: `text-muted-foreground`
+
+### Interactive Elements
+- **Buttons**: Use shadcn/ui Button component with variants
+- **Hover Effects**: `transition-colors` for smooth transitions
+- **Focus States**: Visible focus rings for accessibility
+- **Loading States**: Skeleton loaders matching content structure
+
+### Charts Styling
+- **Card Container**: `rounded-xl shadow-sm`
+- **Chart Height**: Consistent heights (250px for area, 160px for pie)
+- **Colors**: Use consistent color palette from constants
+- **Tooltips**: Custom styled tooltips matching design system
+
+---
+
+## 🚀 Performance Best Practices (CRITICAL)
+
+### 1. Code Splitting
+- ✅ Use dynamic imports for heavy components (forms, charts, modals)
+- ✅ Lazy load routes when possible
+- ✅ Split vendor bundles appropriately
+
+### 2. Data Fetching
+- ✅ Always use AbortController for request cleanup
+- ✅ Implement request debouncing for search/filter inputs
+- ✅ Cache API responses when appropriate (use React Query or similar)
+- ✅ Batch multiple API calls when possible
+
+### 3. Rendering Optimization
+- ✅ Memoize expensive computations (useMemo)
+- ✅ Memoize component props (React.memo)
+- ✅ Use useCallback for event handlers passed to children
+- ✅ Virtual scrolling for large lists (1000+ items)
+
+### 4. Image Optimization
+- ✅ Use Next.js Image component for all images
+- ✅ Provide proper width/height to prevent layout shift
+- ✅ Use appropriate image formats (WebP, AVIF)
+
+### 5. Bundle Size
+- ✅ Tree-shake unused code
+- ✅ Use dynamic imports for large dependencies
+- ✅ Monitor bundle size with Next.js analyzer
+
+### 6. Server-Side Optimization
+- ✅ Use server-side pagination (already implemented)
+- ✅ Implement proper caching headers
+- ✅ Optimize database queries on backend
+
+---
+
+## 🐛 Debugging & Development
+
+### Console Logging
+```javascript
+// ✅ Use descriptive console logs with context
+console.log("fetchRecords response at 99", response);
+
+// ✅ Remove console.logs before production (or use a logger)
+// Consider using a logging utility in production
+```
+
+### Error Handling
+```javascript
+// ✅ Always handle errors gracefully
+try {
+  // Operation
+} catch (err) {
+  console.error("Operation failed:", err);
+  toast.error(err?.message || "Operation failed");
+}
+```
+
+### Development Tools
+- Use React DevTools for component inspection
+- Use Zustand DevTools for state inspection
+- Use Next.js DevTools for performance monitoring
+
+---
+
+## ⚠️ Critical Rules (MUST FOLLOW)
+
+1. **ALWAYS use "use client"** for components using hooks or browser APIs
+2. **Server actions** must be in files with `"use server"` directive
+3. **Store factories** should NEVER be modified - only create module-specific stores
+4. **API calls** MUST go through backend endpoints - never call external APIs directly
+5. **Loading states** MUST be shown for all async operations
+6. **Error handling** MUST use handleResponse helper and toast notifications
+7. **AbortController** MUST be used for all fetch requests
+8. **Memoization** MUST be used for expensive computations and component props
+9. **File structure** MUST follow the exact directory organization
+10. **Import order** MUST follow the specified pattern
+
+---
+
+## 🔄 Migration & Refactoring Guidelines
+
+When refactoring or adding features:
+1. **Maintain existing API contracts** - Backend endpoints should not change
+2. **Keep store interfaces consistent** - Use factory patterns
+3. **Preserve component prop interfaces** - Don't break existing components
+4. **Update related components together** - Maintain consistency
+5. **Test thoroughly** before committing
+6. **Follow the exact page structure** for CRM modules
+
+---
+
+## 📚 Additional Resources
+
+- Next.js 15 Docs: https://nextjs.org/docs
+- Zustand Docs: https://zustand-demo.pmnd.rs/
+- shadcn/ui: https://ui.shadcn.com/
+- Tailwind CSS: https://tailwindcss.com/
+- React Hook Form: https://react-hook-form.com/
+- Recharts: https://recharts.org/
+
+---
+
+**Last Updated**: 2025-01-XX
+**Maintained By**: Development Team
+**Backend**: FastAPI (Python) - All API calls must go through backend

@@ -1,9 +1,11 @@
+// Local development
+export const API_DOMAIN = "http://localhost:8006";
+
+// Remote servers (uncomment as needed)
 //export const API_DOMAIN = "http://164.92.102.85:8006";
-//export const API_DOMAIN = "http://192.168.10.132:8006";
 //export const API_DOMAIN = "http://192.168.10.132:8006";
 //export const API_DOMAIN = "http://192.168.1.198:8006";
 //export const API_DOMAIN = "http://119.73.97.36:8006";
-export const API_DOMAIN = "http://164.92.102.85:8006";
 
 // SYSTEM CONSTANTS - starting
 export const ACTIVE_OPTIONS = [
