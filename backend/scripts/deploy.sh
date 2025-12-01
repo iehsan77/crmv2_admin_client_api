@@ -149,7 +149,7 @@ verify_deployment() {
     fi
     
     # Check if API is responding
-    local api_url="http://localhost:8014/health"
+    local api_url="http://localhost:8006/health"
     local max_attempts=10
     local attempt=1
     

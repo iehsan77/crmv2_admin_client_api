@@ -169,7 +169,7 @@ CALL_STATUSES = ["1", "2", "3", "4", "5"]
 
 ```bash
 # Test statistics endpoint
-curl -X POST "http://localhost:8014/crm/calls/get-statistics" \
+curl -X POST "http://localhost:8006/crm/calls/get-statistics" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "from=2025-10-01T00:00:00Z" \
   -F "to=2025-10-10T00:00:00Z"

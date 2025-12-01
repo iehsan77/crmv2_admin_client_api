@@ -136,7 +136,7 @@ POST /crm/calls/get-grouped-by-status
 
 #### 1. Get All Status Groups with Enriched Calls (Default)
 ```bash
-curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
+curl -X POST "http://localhost:8006/crm/calls/get-grouped-by-status" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "limit=100" \
   -F "include_enrichment=true"
@@ -144,14 +144,14 @@ curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
 
 #### 2. Get Only Call IDs (Very Fast, No Enrichment)
 ```bash
-curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
+curl -X POST "http://localhost:8006/crm/calls/get-grouped-by-status" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "include_enrichment=false"
 ```
 
 #### 3. Get Limited Calls Per Status (Optimized for UI)
 ```bash
-curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
+curl -X POST "http://localhost:8006/crm/calls/get-grouped-by-status" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "limit=50" \
   -F "include_enrichment=true"

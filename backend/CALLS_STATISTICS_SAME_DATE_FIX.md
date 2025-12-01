@@ -100,7 +100,7 @@ Expected output shows that all calls throughout the day are included.
 
 ```bash
 # Test with same date
-curl -X POST "http://localhost:8014/crm/calls/get-statistics" \
+curl -X POST "http://localhost:8006/crm/calls/get-statistics" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "from=2025-10-10T00:00:00Z" \
   -F "to=2025-10-10T00:00:00Z"

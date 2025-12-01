@@ -123,7 +123,7 @@ docker-compose exec core_api python cleanup_test_calls.py
 ### Example Request (curl):
 
 ```bash
-curl -X POST "http://localhost:8014/crm/calls/save" \
+curl -X POST "http://localhost:8006/crm/calls/save" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "id=0" \
   -F "call_for=contact" \

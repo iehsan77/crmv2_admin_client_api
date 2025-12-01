@@ -5,7 +5,7 @@
 MONGODB_URL=mongodb+srv://username:password@your-mongodb-cluster.mongodb.net/database?retryWrites=true&w=majority
 
 # API Configuration
-API_URL=http://localhost:8014
+API_URL=http://localhost:8006
 WORKING_ENVIRONMENT=development  # development, staging, production
 
 # Security

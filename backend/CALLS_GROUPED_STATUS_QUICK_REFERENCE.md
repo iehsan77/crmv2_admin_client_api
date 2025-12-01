@@ -65,7 +65,7 @@ for call_id in status_data["call_ids"]:
 
 ### 1. Full Enrichment (Default)
 ```bash
-curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
+curl -X POST "http://localhost:8006/crm/calls/get-grouped-by-status" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "limit=100" \
   -F "include_enrichment=true"
@@ -102,7 +102,7 @@ curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
 
 ### 2. Fast Mode (IDs Only)
 ```bash
-curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
+curl -X POST "http://localhost:8006/crm/calls/get-grouped-by-status" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "include_enrichment=false"
 ```

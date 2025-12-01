@@ -18,7 +18,7 @@ Update the following files with your actual paths and settings:
 
 #### `docker-compose.yml`
 - Update the `MONGODB_URL` environment variable
-- Adjust the port mapping if needed (currently `8014:15400`)
+- Adjust the port mapping if needed (currently `8006:15400`)
 - Update the domain in Traefik labels
 
 #### `scripts/deploy.sh`
@@ -176,7 +176,7 @@ docker-compose logs -f core_api
 docker-compose ps
 
 # Check API health
-curl http://localhost:8014/health
+curl http://localhost:8006/health
 
 # Check webhook endpoint
 curl http://your-domain.com/health

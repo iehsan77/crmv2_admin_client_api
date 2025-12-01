@@ -193,7 +193,7 @@ db.activity_logs.countDocuments({entity_type: "call", tenant_id: 1})
 
 ```bash
 # Get calls list (replace with your API URL and token)
-curl -X POST "http://localhost:8014/crm/calls/list" \
+curl -X POST "http://localhost:8006/crm/calls/list" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"page": 1, "limit": 10}'

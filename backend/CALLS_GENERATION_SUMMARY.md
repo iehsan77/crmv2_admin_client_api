@@ -285,7 +285,7 @@ The generated calls integrate seamlessly:
 The scripts are designed to run inside the Docker container:
 
 **Container Name**: `crm-admin-api`  
-**Port**: 8014:15400  
+**Port**: 8006:15400  
 **Volume Mount**: `./app/:/app`
 
 **Access Methods**:
@@ -311,7 +311,7 @@ The scripts are designed to run inside the Docker container:
 
 3. **Test API**:
    ```bash
-   curl -X POST "http://localhost:8014/crm/calls/list" \
+   curl -X POST "http://localhost:8006/crm/calls/list" \
      -H "Authorization: Bearer YOUR_TOKEN"
    ```
 

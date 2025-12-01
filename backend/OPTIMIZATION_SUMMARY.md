@@ -247,13 +247,13 @@ docker ps | grep crm-admin-api
 
 ```bash
 # Test with enrichment (default)
-curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
+curl -X POST "http://localhost:8006/crm/calls/get-grouped-by-status" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "limit=50" \
   -F "include_enrichment=true"
 
 # Test fast mode (IDs only)
-curl -X POST "http://localhost:8014/crm/calls/get-grouped-by-status" \
+curl -X POST "http://localhost:8006/crm/calls/get-grouped-by-status" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "include_enrichment=false"
 
